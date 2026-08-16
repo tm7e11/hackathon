@@ -8,6 +8,25 @@ This repository is organized into three main components:
 
 ## Quick Start
 
+Docker Compose:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Podman Compose:
+
+```bash
+cp .env.example .env
+podman compose up --build
+```
+
+The frontend starts at `http://localhost:5173` and the processor API starts at
+`http://localhost:8000`.
+
+VSS endpoints and the frontend system prompt are configured in `.env`.
+
 Backend:
 
 ```bash

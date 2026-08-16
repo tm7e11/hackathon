@@ -1,0 +1,38 @@
+services:
+  processor:
+    build:
+      context: ./processor
+      target: api
+    environment:
+      VSS_BASE_URL: ${VSS_BASE_URL}
+      VSS_AGENT_GENERATE_URL: ${VSS_AGENT_GENERATE_URL}
+      VSS_UPLOAD_PATH: ${VSS_UPLOAD_PATH}
+      VSS_SEARCH_PATH: ${VSS_SEARCH_PATH}
+      VSS_REQUEST_TIMEOUT_SECONDS: ${VSS_REQUEST_TIMEOUT_SECONDS}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_VSS_AGENT_API_URL: ${VITE_VSS_AGENT_API_URL}
+      VITE_VSS_UI_URL: ${VITE_VSS_UI_URL}
+      VITE_VSS_UPLOAD_API_URL: ${VITE_VSS_UPLOAD_API_URL}
+      VITE_VSS_VST_API_URL: ${VITE_VSS_VST_API_URL}
+      VITE_VSS_SYSTEM_PROMPT: ${VITE_VSS_SYSTEM_PROMPT}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - processor

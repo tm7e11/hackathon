@@ -1,4 +1,5 @@
 .DS_Store
+.env
 
 # Python
 __pycache__/
@@ -18,4 +19,3 @@ processor/raw/*
 processor/processed/*
 !processor/raw/.gitkeep
 !processor/processed/.gitkeep
-

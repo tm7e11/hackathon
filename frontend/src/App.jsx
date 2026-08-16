@@ -31,8 +31,10 @@ const CLIP_DURATION_SECONDS = 18;
 const CHUNK_SIZE_BYTES = 10 * 1024 * 1024;
 const UPLOAD_TIMESTAMP = "2025-01-01T00:00:00";
 const HISTORY_STORAGE_KEY = "surgeseek-upload-history";
-const VSS_SYSTEM_PROMPT =
+const DEFAULT_VSS_SYSTEM_PROMPT =
   'You are a video expert. Make sure to judge your response to the question. Do not ask for the video id if I ask you to find videos or list videos. The output format must be JSON with this shape: {"answers":[{"video_id":"to-be-filled","reasoning":"your final thoughts or summary of your thoughts to the given question/task below","score":0.0}]}. The score is for every task. If returning multiple videos, return a list of answers. The video_id is the name of the video in the database. This is to help assist medical staff judgement.';
+const VSS_SYSTEM_PROMPT =
+  import.meta.env.VITE_VSS_SYSTEM_PROMPT ?? DEFAULT_VSS_SYSTEM_PROMPT;
 
 const TEST_VIDEO_ANSWER = {
   video_id: "LapSmallBowelResectionSurgery-rdInwPkuE6w",
