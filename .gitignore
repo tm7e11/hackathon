@@ -9,3 +9,13 @@ __pycache__/
 node_modules/
 dist/
 
+# Docker image artifacts
+*.tar
+
+# Pipeline media: source videos in raw/, generated clips in processed/
+# (keep the directories, ignore their contents)
+processor/raw/*
+processor/processed/*
+!processor/raw/.gitkeep
+!processor/processed/.gitkeep
+
