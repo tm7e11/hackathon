@@ -31,13 +31,34 @@ const CLIP_DURATION_SECONDS = 18;
 const CHUNK_SIZE_BYTES = 10 * 1024 * 1024;
 const UPLOAD_TIMESTAMP = "2025-01-01T00:00:00";
 const HISTORY_STORAGE_KEY = "surgeseek-upload-history";
-const DEFAULT_VSS_SYSTEM_PROMPT =
-  'You are a video expert. Make sure to judge your response to the question. Do not ask for the video id if I ask you to find videos or list videos. The output format must be JSON with this shape: {"answers":[{"video_id":"to-be-filled","reasoning":"your final thoughts or summary of your thoughts to the given question/task below","score":0.0}]}. The score is for every task. If returning multiple videos, return a list of answers. The video_id is the name of the video in the database. This is to help assist medical staff judgement.';
+const DEFAULT_VSS_SYSTEM_PROMPT = `You are a video-database search agent. The database is the search space, so a content question ("find/which videos show X") is your job to resolve - never ask the user which video/sensor to use.
+Procedure:
+
+
+
+FIRST call 'vst_video_list'
+• Consider only the first 3 videos (media_type='video').
+
+For each of those 3, call 'video_understanding (sensor_id=, start_timestamp=None,
+end_timestamp=None,
+user_prompt="<event from the task, eg. closing of the bowel>",
+vIm_reasoning=true)'. Don't reuse captions from earlier turns.
+
+Score each video in [0.0,1.0] for how clearly it shows the event, based only on its own result. Reason for at most 15 steps, then finalize.
+Only reply "[USER] ..." if the list is empty. Never route to report_agent unless the user literally says "report".
+Output EXACTLY this JSON, nothing else (no prose, no markdown, no "[USER]"):
+{"answers": ["video_id": "<db name›", "reasoning":"<why it matches/doesn't>", "score": }]}
+One entry per evaluated video (up to 3).`;
 const VSS_SYSTEM_PROMPT =
   import.meta.env.VITE_VSS_SYSTEM_PROMPT ?? DEFAULT_VSS_SYSTEM_PROMPT;
+const ENABLE_MOCK_VIDEO_ID = ["1", "true", "yes"].includes(
+  String(import.meta.env.VITE_ENABLE_MOCK_VIDEO_ID ?? "").toLowerCase(),
+);
+const MOCK_VIDEO_ID =
+  import.meta.env.VITE_MOCK_VIDEO_ID ?? "LapSmallBowelResectionSurgery-rdInwPkuE6w";
 
 const TEST_VIDEO_ANSWER = {
-  video_id: "LapSmallBowelResectionSurgery-rdInwPkuE6w",
+  video_id: MOCK_VIDEO_ID,
   reasoning:
     "Hard-coded test video for validating VSS playback from the Search Videos UI.",
   score: 0.95,
@@ -457,10 +478,10 @@ function SearchScreen({
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const searchAnswers = useMemo(() => normalizeAnswers(searchResult), [searchResult]);
-  const hasSearchAnswers = searchAnswers.length > 0;
-  const visibleMatches = hasSearchAnswers ? searchAnswers : [TEST_VIDEO_ANSWER];
-  const activeMatchIndex = hasSearchAnswers
-    ? Math.min(selectedSearchIndex, searchAnswers.length - 1)
+  const visibleMatches = ENABLE_MOCK_VIDEO_ID ? [TEST_VIDEO_ANSWER] : searchAnswers;
+  const hasVisibleMatches = visibleMatches.length > 0;
+  const activeMatchIndex = hasVisibleMatches
+    ? Math.min(selectedSearchIndex, visibleMatches.length - 1)
     : 0;
   const selectedAnswer = visibleMatches[activeMatchIndex] ?? null;
 
@@ -724,7 +745,7 @@ function SearchScreen({
                 key={match.video_id ?? match.title}
                 type="button"
                 onClick={() => {
-                  if (hasSearchAnswers) setSelectedSearchIndex(index);
+                  if (hasVisibleMatches) setSelectedSearchIndex(index);
                 }}
               >
                 <div className="match-copy">
@@ -1000,15 +1021,72 @@ function parseAnswersJson(text) {
   try {
     return extractAnswersPayload(JSON.parse(text));
   } catch {
-    const jsonMatch = text.match(/\{[\s\S]*"answers"[\s\S]*\}/);
-    if (!jsonMatch) return null;
+    const fencedPayload = findFirstAnswersPayload(extractFencedJsonBlocks(text));
+    if (fencedPayload) return fencedPayload;
 
+    return findFirstAnswersPayload(extractJsonObjects(text));
+  }
+}
+
+function findFirstAnswersPayload(jsonCandidates) {
+  let emptyPayload = null;
+
+  for (const candidate of jsonCandidates) {
     try {
-      return extractAnswersPayload(JSON.parse(jsonMatch[0]));
+      const payload = extractAnswersPayload(JSON.parse(candidate));
+      if (!payload) continue;
+      if (payload.answers.length > 0) return payload;
+      emptyPayload ??= payload;
     } catch {
-      return null;
+      // Keep scanning; model responses often contain tool traces before JSON.
     }
   }
+
+  return emptyPayload;
+}
+
+function extractFencedJsonBlocks(text) {
+  return Array.from(text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi), (match) =>
+    match[1].trim(),
+  );
+}
+
+function extractJsonObjects(text) {
+  const objects = [];
+  let startIndex = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{") {
+      if (depth === 0) startIndex = index;
+      depth += 1;
+    } else if (character === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && startIndex >= 0) {
+        objects.push(text.slice(startIndex, index + 1));
+        startIndex = -1;
+      }
+    }
+  }
+
+  return objects;
 }
 
 async function uploadFileToVss({ file, fileName, uploadUrl, onProgress }) {
