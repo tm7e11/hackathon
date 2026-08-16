@@ -1,17 +1,38 @@
+# OS/editor
 .DS_Store
+.idea/
+.vscode/
+
+# Environment and local config
 .env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Node
 node_modules/
 dist/
+coverage/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Docker image artifacts
+# Docker and local container artifacts
 *.tar
+docker-compose.override.yml
+compose.override.yml
 
 # Pipeline media: source videos in raw/, generated clips in processed/
 # (keep the directories, ignore their contents)
