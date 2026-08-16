@@ -206,6 +206,9 @@ def main() -> int:
     surgical = nonsurgical = 0
     records: list[dict] = []
     for i, src in enumerate(videos, 1):
+        # Wrap the entire per-video pipeline. If any stage fails, keep whatever
+        # 20-second clips were already written to PROCESSED_DIR as the final
+        # result and move on to the next video.
         try:
             duration = probe_duration(src)
             expected = max(1, math.ceil(duration / CLIP_DURATION))
@@ -213,33 +216,38 @@ def main() -> int:
             n = split_video(src, PROCESSED_DIR)
             total_clips += n
             ok += 1
-        except RuntimeError as exc:
-            sys.stderr.write(f"[{i}/{len(videos)}] FAILED {src.name}: {exc}\n")
-            failed += 1
-            continue
 
-        if not classify:
-            continue
-
-        for clip in sorted(PROCESSED_DIR.glob(f"{src.stem}_*.mp4")):
-            try:
-                is_surgical, answer = is_surgical_clip(clip)
-            except (RuntimeError, requests.RequestException, KeyError, ValueError) as exc:
-                # Soft failure: keep the clip and record the error so nothing is
-                # silently discarded on a transient API/ffmpeg problem.
-                sys.stderr.write(f"    classify FAILED {clip.name}: {exc}\n")
-                records.append({"clip": clip.name, "is_surgical": None, "raw_answer": None,
-                                "error": str(exc)})
+            if not classify:
                 continue
 
-            records.append({"clip": clip.name, "is_surgical": is_surgical, "raw_answer": answer})
-            if is_surgical:
-                surgical += 1
-                print(f"    surgical     {clip.name}  ({answer!r})")
-            else:
-                nonsurgical += 1
-                clip.unlink()  # keep only surgical clips
-                print(f"    non-surgical {clip.name}  ({answer!r}) -> removed")
+            for clip in sorted(PROCESSED_DIR.glob(f"{src.stem}_*.mp4")):
+                try:
+                    is_surgical, answer = is_surgical_clip(clip)
+                except (RuntimeError, requests.RequestException, KeyError, ValueError) as exc:
+                    # Soft failure: keep the clip and record the error so nothing is
+                    # silently discarded on a transient API/ffmpeg problem.
+                    sys.stderr.write(f"    classify FAILED {clip.name}: {exc}\n")
+                    records.append({"clip": clip.name, "is_surgical": None, "raw_answer": None,
+                                    "error": str(exc)})
+                    continue
+
+                records.append({"clip": clip.name, "is_surgical": is_surgical, "raw_answer": answer})
+                if is_surgical:
+                    surgical += 1
+                    print(f"    surgical     {clip.name}  ({answer!r})")
+                else:
+                    nonsurgical += 1
+                    clip.unlink()  # keep only surgical clips
+                    print(f"    non-surgical {clip.name}  ({answer!r}) -> removed")
+        except Exception as exc:
+            # Entire pipeline failed for this video: keep any 20-second clips in
+            # PROCESSED_DIR as the final result.
+            sys.stderr.write(
+                f"[{i}/{len(videos)}] pipeline FAILED {src.name}: {exc}; "
+                f"keeping 20s clips in {PROCESSED_DIR}/ as the final result.\n"
+            )
+            failed += 1
+            continue
 
     if classify:
         manifest = PROCESSED_DIR / "classifications.json"
